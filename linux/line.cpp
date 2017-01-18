@@ -36,6 +36,7 @@ struct ClassVertex {
 	char *name;
 };
 
+// Parameters for training
 char network_file[MAX_STRING], embedding_file[MAX_STRING];
 struct ClassVertex *vertex;
 int is_binary = 0, num_threads = 1, order = 2, dim = 100, num_negative = 5;
@@ -247,10 +248,13 @@ void InitVector()
 /* Sample negative vertex samples according to vertex degrees */
 void InitNegTable()
 {
+    /* alias table method used here */
+
 	double sum = 0, cur_sum = 0, por = 0;
 	int vid = 0;
 	neg_table = (int *)malloc(neg_table_size * sizeof(int));
 	for (int k = 0; k != num_vertices; k++) sum += pow(vertex[k].degree, NEG_SAMPLING_POWER);
+        // traditionally, NEG_SAMPLING_POWER is set to 3/4
 	for (int k = 0; k != neg_table_size; k++)
 	{
 		if ((double)(k + 1) / neg_table_size > por)
@@ -294,7 +298,7 @@ int Rand(unsigned long long &seed)
 void Update(real *vec_u, real *vec_v, real *vec_error, int label)
 {
 	real x = 0, g;
-	for (int c = 0; c != dim; c++) x += vec_u[c] * vec_v[c];
+	for (int c = 0; c != dim; c++) x += vec_u[c] * vec_v[c]; // x:inner product of 2 embedding vectors
 	g = (label - FastSigmoid(x)) * rho;
 	for (int c = 0; c != dim; c++) vec_error[c] += g * vec_v[c];
 	for (int c = 0; c != dim; c++) vec_v[c] += g * vec_u[c];
@@ -304,7 +308,7 @@ void *TrainLINEThread(void *id)
 {
 	long long u, v, lu, lv, target, label;
 	long long count = 0, last_count = 0, curedge;
-	unsigned long long seed = (long long)id;
+	unsigned long long seed = (unsigned long long)id;
 	real *vec_error = (real *)calloc(dim, sizeof(real));
 
 	while (1)
@@ -322,6 +326,7 @@ void *TrainLINEThread(void *id)
 			if (rho < init_rho * 0.0001) rho = init_rho * 0.0001;
 		}
 
+        // sample an edge in network
 		curedge = SampleAnEdge(gsl_rng_uniform(gsl_r), gsl_rng_uniform(gsl_r));
 		u = edge_source_id[curedge];
 		v = edge_target_id[curedge];
@@ -329,7 +334,10 @@ void *TrainLINEThread(void *id)
 		lu = u * dim;
 		for (int c = 0; c != dim; c++) vec_error[c] = 0;
 
+
 		// NEGATIVE SAMPLING
+        // for each existing edge, sample K=num_negative negative edges
+        // K+1 edges in total, first labeled 1, else labeled 0
 		for (int d = 0; d != num_negative + 1; d++)
 		{
 			if (d == 0)
@@ -377,6 +385,8 @@ void TrainLINE() {
 		printf("Error: order should be eighther 1 or 2!\n");
 		exit(1);
 	}
+
+    // print training parameters to screen
 	printf("--------------------------------\n");
 	printf("Order: %d\n", order);
 	printf("Samples: %lldM\n", total_samples / 1000000);
@@ -437,7 +447,7 @@ int main(int argc, char **argv) {
 		printf("\t-order <int>\n");
 		printf("\t\tThe type of the model; 1 for first order, 2 for second order; default is 2\n");
 		printf("\t-negative <int>\n");
-		printf("\t\tNumber of negative examples; default is 5\n");
+		printf("\t\tNumber of negative examples; default is 5\n");  // k value
 		printf("\t-samples <int>\n");
 		printf("\t\tSet the number of training samples as <int>Million; default is 1\n");
 		printf("\t-threads <int>\n");
@@ -455,7 +465,7 @@ int main(int argc, char **argv) {
 	if ((i = ArgPos((char *)"-order", argc, argv)) > 0) order = atoi(argv[i + 1]);
 	if ((i = ArgPos((char *)"-negative", argc, argv)) > 0) num_negative = atoi(argv[i + 1]);
 	if ((i = ArgPos((char *)"-samples", argc, argv)) > 0) total_samples = atoi(argv[i + 1]);
-	if ((i = ArgPos((char *)"-rho", argc, argv)) > 0) init_rho = atof(argv[i + 1]);
+	if ((i = ArgPos((char *)"-rho", argc, argv)) > 0) init_rho = atof(argv[i + 1]);   // learning rate
 	if ((i = ArgPos((char *)"-threads", argc, argv)) > 0) num_threads = atoi(argv[i + 1]);
 	total_samples *= 1000000;
 	rho = init_rho;
