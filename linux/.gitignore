@@ -1,1 +1,8 @@
 .idea/
+Makefile
+CMakeFiles/
+CMakeCache.txt
+*.cmake
+embedding_file.txt
+network_file
+../jupyter/

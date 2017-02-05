@@ -4,10 +4,15 @@ project(linux)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 set(SOURCE_FILES
-    concatenate.cpp
-    line.cpp
-    normalize.cpp
-    reconstruct.cpp
-    train_youtube.sh)
+        line.cpp
+        )
 
-add_executable(linux ${SOURCE_FILES})
+include_directories(
+        /usr/local/Cellar/gsl/2.2.1/include
+)
+link_libraries(
+        /usr/local/Cellar/gsl/2.2.1/lib/libgsl.a
+)
+
+
+add_executable(line ${SOURCE_FILES})

@@ -32,15 +32,19 @@ const int sigmoid_table_size = 1000;
 typedef float real;                    // Precision of float numbers
 
 struct ClassVertex {
-	double degree;
+//	double degree=0; // out degree
 	char *name;
+    double pdegree=0;  //positive out degree
+    double ndegree=0; // negative out degree
 };
 
 // Parameters for training
 char network_file[MAX_STRING], embedding_file[MAX_STRING];
 struct ClassVertex *vertex;
 int is_binary = 0, num_threads = 1, order = 2, dim = 100, num_negative = 5;
-int *vertex_hash_table, *neg_table;
+int *vertex_hash_table;
+//int *neg_table;
+int *neg_table_p,*neg_table_n;
 int max_num_vertices = 1000, num_vertices = 0;
 long long total_samples = 1, current_sample_count = 0, num_edges = 0;
 real init_rho = 0.025, rho;
@@ -100,8 +104,9 @@ int AddVertex(char *name)
 	if (length > MAX_STRING) length = MAX_STRING;
 	vertex[num_vertices].name = (char *)calloc(length, sizeof(char));
 	strcpy(vertex[num_vertices].name, name);
-	vertex[num_vertices].degree = 0;
-	num_vertices++;
+	vertex[num_vertices].pdegree = 0;
+    vertex[num_vertices].ndegree = 0;
+	num_vertices++;  // num_vertices points to next empty slot
 	if (num_vertices + 2 >= max_num_vertices)
 	{
 		max_num_vertices += 1000;
@@ -151,14 +156,20 @@ void ReadData()
 			fflush(stdout);
 		}
 
+        // source node
 		vid = SearchHashTable(name_v1);
 		if (vid == -1) vid = AddVertex(name_v1);
-		vertex[vid].degree += weight;
+        if (weight>0)
+		    vertex[vid].pdegree += weight;
+        else
+            vertex[vid].ndegree -=weight;
+
 		edge_source_id[k] = vid;
 
+        // target node
 		vid = SearchHashTable(name_v2);
 		if (vid == -1) vid = AddVertex(name_v2);
-		vertex[vid].degree += weight;
+//		vertex[vid].degree += weight;
 		edge_target_id[k] = vid;
 
 		edge_weight[k] = weight;
@@ -250,21 +261,40 @@ void InitNegTable()
 {
     /* alias table method used here */
 
+    // negative table for positive vertex
 	double sum = 0, cur_sum = 0, por = 0;
 	int vid = 0;
-	neg_table = (int *)malloc(neg_table_size * sizeof(int));
-	for (int k = 0; k != num_vertices; k++) sum += pow(vertex[k].degree, NEG_SAMPLING_POWER);
+	neg_table_p = (int *)malloc(neg_table_size * sizeof(int));
+	for (int k = 0; k != num_vertices; k++) sum += pow(vertex[k].pdegree, NEG_SAMPLING_POWER);
         // traditionally, NEG_SAMPLING_POWER is set to 3/4
 	for (int k = 0; k != neg_table_size; k++)
 	{
 		if ((double)(k + 1) / neg_table_size > por)
 		{
-			cur_sum += pow(vertex[vid].degree, NEG_SAMPLING_POWER);
+			cur_sum += pow(vertex[vid].pdegree, NEG_SAMPLING_POWER);
 			por = cur_sum / sum;
 			vid++;
 		}
-		neg_table[k] = vid - 1;
+        neg_table_p[k] = vid - 1;
 	}
+
+    // negative table for negative vertex
+    sum=0; cur_sum=0, por=0;
+    vid=0;
+    neg_table_n = (int*)malloc(neg_table_size * sizeof(int));
+    for (int k = 0; k != num_vertices; k++) sum += pow(vertex[k].ndegree, NEG_SAMPLING_POWER);
+    // traditionally, NEG_SAMPLING_POWER is set to 3/4
+    for (int k = 0; k != neg_table_size; k++)
+    {
+        if ((double)(k + 1) / neg_table_size > por)
+        {
+            cur_sum += pow(vertex[vid].ndegree, NEG_SAMPLING_POWER);
+            por = cur_sum / sum;
+            vid++;
+        }
+        neg_table_n[k] = vid - 1;
+    }
+
 }
 
 /* Fastly compute sigmoid function */
@@ -310,6 +340,8 @@ void *TrainLINEThread(void *id)
 	long long count = 0, last_count = 0, curedge;
 	unsigned long long seed = (unsigned long long)id;
 	real *vec_error = (real *)calloc(dim, sizeof(real));
+    bool is_edge_positive = true; // false stands for negative edge
+    double weight;
 
 	while (1)
 	{
@@ -330,6 +362,9 @@ void *TrainLINEThread(void *id)
 		curedge = SampleAnEdge(gsl_rng_uniform(gsl_r), gsl_rng_uniform(gsl_r));
 		u = edge_source_id[curedge];
 		v = edge_target_id[curedge];
+        weight = edge_weight[curedge];
+        is_edge_positive = weight>0? true : false;
+
 
 		lu = u * dim;
 		for (int c = 0; c != dim; c++) vec_error[c] = 0;
@@ -343,12 +378,12 @@ void *TrainLINEThread(void *id)
 			if (d == 0)
 			{
 				target = v;
-				label = 1;
+				label = is_edge_positive? 1:0;
 			}
 			else
 			{
-				target = neg_table[Rand(seed)];
-				label = 0;
+				target = is_edge_positive? neg_table_p[Rand(seed)]: neg_table_n[Rand(seed)];
+				label = is_edge_positive? 0:1;
 			}
 			lv = target * dim;
 			if (order == 1) Update(&emb_vertex[lu], &emb_vertex[lv], vec_error, label);
@@ -368,9 +403,10 @@ void Output()
 	fprintf(fo, "%d %d\n", num_vertices, dim);
 	for (int a = 0; a < num_vertices; a++)
 	{
-		fprintf(fo, "%s ", vertex[a].name);
+		fprintf(fo, "%s\n", vertex[a].name);
 		if (is_binary) for (int b = 0; b < dim; b++) fwrite(&emb_vertex[a * dim + b], sizeof(real), 1, fo);
 		else for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_vertex[a * dim + b]);
+        if (order==2) for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_context[a * dim + b]);
 		fprintf(fo, "\n");
 	}
 	fclose(fo);
