@@ -49,6 +49,7 @@ int max_num_vertices = 1000, num_vertices = 0;
 long long total_samples = 1, current_sample_count = 0, num_edges = 0;
 real init_rho = 0.025, rho;
 real *emb_vertex, *emb_context, *sigmoid_table;
+real *emb_context2;
 
 int *edge_source_id, *edge_target_id;
 double *edge_weight;
@@ -192,6 +193,7 @@ void InitAliasTable()
 	double *norm_prob = (double*)malloc(num_edges*sizeof(double));
 	long long *large_block = (long long*)malloc(num_edges*sizeof(long long));
 	long long *small_block = (long long*)malloc(num_edges*sizeof(long long));
+
 	if (norm_prob == NULL || large_block == NULL || small_block == NULL)
 	{
 		printf("Error: memory allocation failed!\n");
@@ -202,8 +204,9 @@ void InitAliasTable()
 	long long cur_small_block, cur_large_block;
 	long long num_small_block = 0, num_large_block = 0;
 
-	for (long long k = 0; k != num_edges; k++) sum += edge_weight[k];
-	for (long long k = 0; k != num_edges; k++) norm_prob[k] = edge_weight[k] * num_edges / sum;
+
+	for (long long k = 0; k != num_edges; k++) sum += edge_weight[k]>0? edge_weight[k]:-edge_weight[k];
+	for (long long k = 0; k != num_edges; k++) norm_prob[k] = edge_weight[k]>0? (edge_weight[k] * num_edges / sum) : (-edge_weight[k] * num_edges / sum);
 
 	for (long long k = num_edges - 1; k >= 0; k--)
 	{
@@ -254,6 +257,10 @@ void InitVector()
 	if (emb_context == NULL) { printf("Error: memory allocation failed\n"); exit(1); }
 	for (b = 0; b < dim; b++) for (a = 0; a < num_vertices; a++)
 		emb_context[a * dim + b] = 0;
+    a = posix_memalign((void **)&emb_context2, 128, (long long)num_vertices * dim * sizeof(real));
+    if (emb_context2 == NULL) { printf("Error: memory allocation failed\n"); exit(1); }
+    for (b = 0; b < dim; b++) for (a = 0; a < num_vertices; a++)
+            emb_context2[a * dim + b] = 0;
 }
 
 /* Sample negative vertex samples according to vertex degrees */
@@ -336,7 +343,8 @@ void Update(real *vec_u, real *vec_v, real *vec_error, int label)
 
 void *TrainLINEThread(void *id)
 {
-	long long u, v, lu, lv, target, label;
+	long long u, v, lu, lv, target;
+    int label;
 	long long count = 0, last_count = 0, curedge;
 	unsigned long long seed = (unsigned long long)id;
 	real *vec_error = (real *)calloc(dim, sizeof(real));
@@ -363,7 +371,7 @@ void *TrainLINEThread(void *id)
 		u = edge_source_id[curedge];
 		v = edge_target_id[curedge];
         weight = edge_weight[curedge];
-        is_edge_positive = weight>0? true : false;
+        is_edge_positive = weight>0;
 
 
 		lu = u * dim;
@@ -378,16 +386,17 @@ void *TrainLINEThread(void *id)
 			if (d == 0)
 			{
 				target = v;
-				label = is_edge_positive? 1:0;
+				label = 1;
 			}
 			else
 			{
 				target = is_edge_positive? neg_table_p[Rand(seed)]: neg_table_n[Rand(seed)];
-				label = is_edge_positive? 0:1;
+				label = 0;
 			}
 			lv = target * dim;
 			if (order == 1) Update(&emb_vertex[lu], &emb_vertex[lv], vec_error, label);
-			if (order == 2) Update(&emb_vertex[lu], &emb_context[lv], vec_error, label);
+			if (order == 2 && is_edge_positive) Update(&emb_vertex[lu], &emb_context[lv], vec_error, label);
+            if (order ==2 && is_edge_positive) Update(&emb_vertex[lu], &emb_context2[lv], vec_error, label);
 		}
 		for (int c = 0; c != dim; c++) emb_vertex[c + lu] += vec_error[c];
 
@@ -408,6 +417,8 @@ void Output()
 		else for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_vertex[a * dim + b]);
         fprintf(fo,"\n");
         if (order==2) for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_context[a * dim + b]);
+        fprintf(fo,"\n");
+        if (order==2) for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_context2[a * dim + b]);
 		fprintf(fo, "\n");
 	}
 	fclose(fo);
