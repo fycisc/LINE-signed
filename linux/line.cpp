@@ -406,6 +406,7 @@ void Output()
 		fprintf(fo, "%s\n", vertex[a].name);
 		if (is_binary) for (int b = 0; b < dim; b++) fwrite(&emb_vertex[a * dim + b], sizeof(real), 1, fo);
 		else for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_vertex[a * dim + b]);
+        fprintf(fo,"\n");
         if (order==2) for (int b = 0; b < dim; b++) fprintf(fo, "%lf ", emb_context[a * dim + b]);
 		fprintf(fo, "\n");
 	}
