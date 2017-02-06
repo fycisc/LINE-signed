@@ -396,7 +396,7 @@ void *TrainLINEThread(void *id)
 			lv = target * dim;
 			if (order == 1) Update(&emb_vertex[lu], &emb_vertex[lv], vec_error, label);
 			if (order == 2 && is_edge_positive) Update(&emb_vertex[lu], &emb_context[lv], vec_error, label);
-            if (order ==2 && is_edge_positive) Update(&emb_vertex[lu], &emb_context2[lv], vec_error, label);
+            if (order ==2 && !is_edge_positive) Update(&emb_vertex[lu], &emb_context2[lv], vec_error, label);
 		}
 		for (int c = 0; c != dim; c++) emb_vertex[c + lu] += vec_error[c];
 
@@ -409,7 +409,7 @@ void *TrainLINEThread(void *id)
 void Output()
 {
 	FILE *fo = fopen(embedding_file, "wb");
-	fprintf(fo, "%d %d\n", num_vertices, dim);
+	fprintf(fo, "%d %d %d\n", num_vertices, dim, order==1?1:3);
 	for (int a = 0; a < num_vertices; a++)
 	{
 		fprintf(fo, "%s\n", vertex[a].name);

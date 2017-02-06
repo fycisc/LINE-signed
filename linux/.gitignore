@@ -3,6 +3,7 @@ Makefile
 CMakeFiles/
 CMakeCache.txt
 *.cmake
+.vscode/
 embedding_file.txt
 network_file
 ../jupyter/
