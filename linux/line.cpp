@@ -400,7 +400,7 @@ void *TrainLINEThread(void *id)
 void Output()
 {
 	FILE *fo = fopen(embedding_file, "wb");
-	fprintf(fo, "%d %d\n", num_vertices, dim);
+	fprintf(fo, "%d %d %d\n", num_vertices, dim,order==1?1:2);
 	for (int a = 0; a < num_vertices; a++)
 	{
 		fprintf(fo, "%s\n", vertex[a].name);
