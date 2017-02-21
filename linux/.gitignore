@@ -1,8 +1,5 @@
 .idea/
 Makefile
-CMakeFiles/
-CMakeCache.txt
-*.cmake
-embedding_file.txt
+.vscode/
 network_file
-../jupyter/
+*.cmake
